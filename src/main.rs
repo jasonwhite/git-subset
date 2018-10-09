@@ -66,7 +66,7 @@ fn process_commits(repo: &git2::Repository, revspec: &git2::Revspec,
     -> Result<Option<git2::Oid>, git2::Error>
 {
     let mut commits = repo.revwalk()?;
-    commits.set_sorting(git2::SORT_TOPOLOGICAL | git2::SORT_REVERSE);
+    commits.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::REVERSE);
 
     match (revspec.from(), revspec.to()) {
         (Some(from), Some(to)) => {
