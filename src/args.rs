@@ -35,7 +35,6 @@ pub struct Args {
 }
 
 impl Args {
-
     pub fn parse() -> Self {
         let matches = App::new(crate_name!())
             .version(crate_version!())
@@ -46,40 +45,33 @@ impl Args {
                     .help("Don't print as much progress.")
                     .long("quiet")
                     .short("q"),
-
                 Arg::with_name("force")
                     .help("Overwrites the branch name if it exists.")
                     .long("force")
                     .short("f"),
-
                 Arg::with_name("nomap")
                     .help("Does not use the saved map. Useful for profiling purposes.")
                     .long("nomap"),
-
                 Arg::with_name("repo")
                     .help("Path to the repository. Defaults to the current directory.")
                     .takes_value(true)
                     .long("repo")
                     .short("r")
                     .default_value("."),
-
                 Arg::with_name("filter-file")
                     .help("Path to the file containing paths to keep.")
                     .takes_value(true)
                     .long("filter-file"),
-
                 Arg::with_name("path")
                     .help("Path to include. Can be specified multiple times.")
                     .takes_value(true)
                     .short("p")
                     .multiple(true)
                     .long("path"),
-
                 Arg::with_name("revspec")
                     .help("The ref to filter from.")
                     .index(1)
                     .default_value("HEAD"),
-
                 Arg::with_name("branch")
                     .help("Name of the branch to create on the rewritten commits.")
                     .takes_value(true)

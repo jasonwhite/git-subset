@@ -18,9 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::io;
-use std::fs;
 use std::collections::HashMap;
+use std::fs;
+use std::io;
 
 use git2::{Oid, Repository};
 
@@ -40,7 +40,9 @@ pub struct OidMap {
 
 impl OidMap {
     pub fn new() -> OidMap {
-        OidMap { map: HashMap::new() }
+        OidMap {
+            map: HashMap::new(),
+        }
     }
 
     /// Reads the map from a file inside the given repository. The name of the
@@ -52,8 +54,7 @@ impl OidMap {
 
         if let Ok(f) = fs::File::open(&path) {
             Self::from_reader(io::BufReader::new(f))
-        }
-        else {
+        } else {
             Ok(Self::new())
         }
     }
@@ -91,10 +92,10 @@ impl OidMap {
             match (a, b) {
                 (Some(Ok(a)), Some(Ok(b))) => {
                     map.insert(a, Some(b));
-                },
+                }
                 (Some(Ok(a)), None) => {
                     map.insert(a, None);
-                },
+                }
                 _ => continue, // Ignore the parsing error.
             };
         }
@@ -122,20 +123,17 @@ impl OidMap {
     /// Resolves an OID through multiple indirections.
     pub fn resolve(&self, k: &Oid) -> Option<&Option<Oid>> {
         match self.map.get(k) {
-            Some(value) => {
-                match *value {
-                    Some(oid) => {
-                        if k == &oid {
-                            Some(value)
-                        } else if self.map.contains_key(&oid) {
-                            self.resolve(&oid)
-                        }
-                        else {
-                            Some(value)
-                        }
-                    },
-                    None => Some(value),
+            Some(value) => match *value {
+                Some(oid) => {
+                    if k == &oid {
+                        Some(value)
+                    } else if self.map.contains_key(&oid) {
+                        self.resolve(&oid)
+                    } else {
+                        Some(value)
+                    }
                 }
+                None => Some(value),
             },
             None => None,
         }
@@ -153,12 +151,14 @@ mod tests {
 
     #[test]
     fn test_resolve() {
-
         let mut map = OidMap::new();
 
-        let a = Oid::from_str("0000000000000000000000000000000000000000").unwrap();
-        let b = Oid::from_str("0000000000000000000000000000000000000001").unwrap();
-        let c = Oid::from_str("0000000000000000000000000000000000000002").unwrap();
+        let a =
+            Oid::from_str("0000000000000000000000000000000000000000").unwrap();
+        let b =
+            Oid::from_str("0000000000000000000000000000000000000001").unwrap();
+        let c =
+            Oid::from_str("0000000000000000000000000000000000000002").unwrap();
 
         map.insert(a, Some(b));
         assert_eq!(map.resolve(&a), Some(&Some(b)));

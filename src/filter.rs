@@ -21,10 +21,10 @@
 use git2;
 use map::OidMap;
 
-use std::io;
-use std::fs;
-use std::path::{Path, Component};
 use std::collections::BTreeMap;
+use std::fs;
+use std::io;
+use std::path::{Component, Path};
 
 #[derive(Debug, Hash)]
 pub struct Filter {
@@ -33,7 +33,9 @@ pub struct Filter {
 
 impl Filter {
     pub fn new() -> Filter {
-        Filter { filter: BTreeMap::new() }
+        Filter {
+            filter: BTreeMap::new(),
+        }
     }
 
     /// Load from a file.
@@ -44,7 +46,6 @@ impl Filter {
     /// Load from a reader. The file shall consist of lines containing paths.
     /// Blank lines and lines starting with a "#" are ignored.
     pub fn from_reader<R: io::BufRead>(reader: R) -> io::Result<Filter> {
-
         let mut filter = Self::new();
 
         for line in reader.lines() {
@@ -69,14 +70,15 @@ impl Filter {
 
         match components.next() {
             Some(Component::Normal(c)) => {
-                let mut filter = self.filter
+                let mut filter = self
+                    .filter
                     .entry(String::from(c.to_str().unwrap()))
                     .or_insert_with(|| Filter::new());
 
                 // Insert the rest of the components recursively.
                 filter.insert(components.as_path());
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -109,10 +111,12 @@ impl Filter {
 
 /// Rewrites a tree such that it only contains the entries specified by the tree
 /// filter. This function calls itself recursively to rewrite a tree.
-pub fn filter_tree(repo: &git2::Repository, map: &mut OidMap,
-                   filter: &Filter, tree: &git2::Tree)
-    -> Result<git2::Oid, git2::Error>
-{
+pub fn filter_tree(
+    repo: &git2::Repository,
+    map: &mut OidMap,
+    filter: &Filter,
+    tree: &git2::Tree,
+) -> Result<git2::Oid, git2::Error> {
     match filter_tree_impl(repo, map, filter, tree)? {
         Some(oid) => Ok(oid),
 
@@ -124,10 +128,12 @@ pub fn filter_tree(repo: &git2::Repository, map: &mut OidMap,
     }
 }
 
-fn filter_tree_impl(repo: &git2::Repository, map: &mut OidMap,
-                   filter: &Filter, tree: &git2::Tree)
-    -> Result<Option<git2::Oid>, git2::Error>
-{
+fn filter_tree_impl(
+    repo: &git2::Repository,
+    map: &mut OidMap,
+    filter: &Filter,
+    tree: &git2::Tree,
+) -> Result<Option<git2::Oid>, git2::Error> {
     if let Some(oid) = map.get(&tree.id()) {
         // The work has already been done. Skip it.
         return Ok(*oid);
@@ -142,20 +148,21 @@ fn filter_tree_impl(repo: &git2::Repository, map: &mut OidMap,
                 builder.insert(
                     entry.name_bytes(),
                     entry.id(),
-                    entry.filemode()
+                    entry.filemode(),
                 )?;
-            }
-            else if entry.kind() == Some(git2::ObjectType::Tree) {
+            } else if entry.kind() == Some(git2::ObjectType::Tree) {
                 // There are sub-filters and this is a tree object. Recurse into
                 // the tree with the sub-filter for further matching.
                 let obj = entry.to_object(repo)?;
                 let tree = obj.as_tree().unwrap();
 
-                if let Some(newtree) = filter_tree_impl(repo, map, filter, &tree)? {
+                if let Some(newtree) =
+                    filter_tree_impl(repo, map, filter, &tree)?
+                {
                     builder.insert(
                         entry.name_bytes(),
                         newtree,
-                        entry.filemode()
+                        entry.filemode(),
                     )?;
                 }
             }
@@ -165,8 +172,7 @@ fn filter_tree_impl(repo: &git2::Repository, map: &mut OidMap,
     if builder.len() == 0 {
         // There are no entries in this tree. Don't write it out.
         Ok(None)
-    }
-    else {
+    } else {
         let oid = builder.write()?;
 
         // Cache it.

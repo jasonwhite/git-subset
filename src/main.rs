@@ -17,29 +17,29 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-#[macro_use] extern crate clap;
+#[macro_use]
+extern crate clap;
 extern crate git2;
 
 mod args;
-mod map;
 mod filter;
+mod map;
 
 use std::cmp;
-use std::str;
-use std::process;
-use std::io::{self, Write};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::io::{self, Write};
+use std::process;
+use std::str;
 
-use map::OidMap;
-use filter::{Filter, filter_tree};
 use args::Args;
+use filter::{filter_tree, Filter};
+use map::OidMap;
 
 /// Returns `true` if the given commit is considered empty. A commit is empty if
 /// its tree is the same as all of its parent's trees, or if it has no parents
 /// and the tree itself is empty.
 fn is_empty_commit(commit: &git2::Commit, empty_tree: &git2::Oid) -> bool {
-
     let mut parents = 0;
     let mut same = 0;
 
@@ -53,18 +53,20 @@ fn is_empty_commit(commit: &git2::Commit, empty_tree: &git2::Oid) -> bool {
 
     if parents > 0 {
         parents == same
-    }
-    else {
+    } else {
         commit.tree_id() == *empty_tree
     }
 }
 
 /// Rewrites the trees of the commits starting with the HEAD commit. Returns the
 /// new tip commit OID.
-fn process_commits(repo: &git2::Repository, revspec: &git2::Revspec,
-                   map: &mut OidMap, filter: &Filter, quiet: bool)
-    -> Result<Option<git2::Oid>, git2::Error>
-{
+fn process_commits(
+    repo: &git2::Repository,
+    revspec: &git2::Revspec,
+    map: &mut OidMap,
+    filter: &Filter,
+    quiet: bool,
+) -> Result<Option<git2::Oid>, git2::Error> {
     let mut commits = repo.revwalk()?;
     commits.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::REVERSE);
 
@@ -72,18 +74,19 @@ fn process_commits(repo: &git2::Repository, revspec: &git2::Revspec,
         (Some(from), Some(to)) => {
             commits.hide(from.id())?;
             commits.push(to.id())?;
-        },
+        }
         (Some(from), None) => {
             commits.push(from.id())?;
-        },
+        }
         _ => {
             // Unsure if this branch can ever get taken.
             panic!("Invalid revspec");
-        },
+        }
     };
 
     // An empty tree OID
-    let empty_tree = git2::Oid::from_str("4b825dc642cb6eb9a060e54bf8d69288fbee4904")?;
+    let empty_tree =
+        git2::Oid::from_str("4b825dc642cb6eb9a060e54bf8d69288fbee4904")?;
 
     // Store the last commit to be processed. This is returned so that we can
     // create a branch on it.
@@ -104,12 +107,18 @@ fn process_commits(repo: &git2::Repository, revspec: &git2::Revspec,
         let id = id.clone();
 
         if !quiet && i % status_step == 0 {
-            print!("\rRewriting {} ({}/{}) - {:3.0}%", id, i+1, commits.len(),
-                   ((i+1) as f32)/(commits.len() as f32) * 100.0);
+            print!(
+                "\rRewriting {} ({}/{}) - {:3.0}%",
+                id,
+                i + 1,
+                commits.len(),
+                ((i + 1) as f32) / (commits.len() as f32) * 100.0
+            );
             io::stdout().flush().unwrap();
         }
 
-        let commit = repo.find_commit(process_commit(repo, map, id, filter)?)?;
+        let commit =
+            repo.find_commit(process_commit(repo, map, id, filter)?)?;
 
         // Store mapping between the old commit and new commit. This is used to
         // remap parent commits.
@@ -128,15 +137,13 @@ fn process_commits(repo: &git2::Repository, revspec: &git2::Revspec,
             // collected.
             if let Some(parent) = commit.parents().next() {
                 map.insert(commit.id(), Some(parent.id()));
-            }
-            else {
+            } else {
                 // If this is a root commit, we need to make the next commit
                 // become the root commit. Thus, we mark this commit as
                 // discarded.
                 map.insert(commit.id(), None);
             }
-        }
-        else {
+        } else {
             // If the final commit is empty, don't return it.
             last = Some(commit.id());
         }
@@ -144,18 +151,24 @@ fn process_commits(repo: &git2::Repository, revspec: &git2::Revspec,
 
     if let Some(commit) = last {
         // Print the final status.
-        println!("\rRewriting {} ({}/{}) - 100%", commit, commits.len(),
-                 commits.len());
+        println!(
+            "\rRewriting {} ({}/{}) - 100%",
+            commit,
+            commits.len(),
+            commits.len()
+        );
     }
 
     Ok(last)
 }
 
 /// Rewrites a single commit. Returns the new OID for the commit.
-fn process_commit(repo: &git2::Repository, map: &mut OidMap, id: git2::Oid,
-                  filter: &Filter)
-    -> Result<git2::Oid, git2::Error>
-{
+fn process_commit(
+    repo: &git2::Repository,
+    map: &mut OidMap,
+    id: git2::Oid,
+    filter: &Filter,
+) -> Result<git2::Oid, git2::Error> {
     // Don't bother if it has already been done.
     if let Some(&Some(newid)) = map.get(&id) {
         return Ok(newid);
@@ -168,14 +181,13 @@ fn process_commit(repo: &git2::Repository, map: &mut OidMap, id: git2::Oid,
     let newtree = filter_tree(repo, map, filter, &tree)?;
 
     // Get the new parent OIDs.
-    let parents : Vec<_> = commit
+    let parents: Vec<_> = commit
         .parent_ids()
-        .filter_map(|p| {
-            match map.resolve(&p) {
-                Some(&Some(p)) => repo.find_commit(p).ok(),
-                _ => None,
-            }
-        }).collect();
+        .filter_map(|p| match map.resolve(&p) {
+            Some(&Some(p)) => repo.find_commit(p).ok(),
+            _ => None,
+        })
+        .collect();
 
     let author = commit.author();
     let committer = commit.committer();
@@ -191,10 +203,15 @@ fn process_commit(repo: &git2::Repository, map: &mut OidMap, id: git2::Oid,
 }
 
 /// Creates a subset of a repository.
-fn repo_subset(repo: &git2::Repository, map: &mut OidMap,
-           filter: &Filter, revspec: &str, branch: &str, force: bool, quiet: bool)
-    -> Result<bool, git2::Error>
-{
+fn repo_subset(
+    repo: &git2::Repository,
+    map: &mut OidMap,
+    filter: &Filter,
+    revspec: &str,
+    branch: &str,
+    force: bool,
+    quiet: bool,
+) -> Result<bool, git2::Error> {
     let revspec = repo.revparse(revspec)?;
 
     match process_commits(repo, &revspec, map, filter, quiet)? {
@@ -203,11 +220,11 @@ fn repo_subset(repo: &git2::Repository, map: &mut OidMap,
             let commit = repo.find_commit(oid)?;
             repo.branch(branch, &commit, force)?;
             Ok(true)
-        },
+        }
         None => {
             // No commits and therefore no branch to create.
             Ok(false)
-        },
+        }
     }
 }
 
@@ -229,7 +246,6 @@ fn repo_subset(repo: &git2::Repository, map: &mut OidMap,
 ///       root commit).
 ///  3. Create a branch on the new tip commit.
 fn main() {
-
     let args = Args::parse();
 
     let repo = match git2::Repository::open(args.repo) {
@@ -237,16 +253,19 @@ fn main() {
         Err(err) => {
             println!("Error: Failed to open repository: {}", err);
             process::exit(1);
-        },
+        }
     };
 
     let mut filter = match args.filter_file {
         Some(path) => match Filter::from_file(&path) {
             Ok(filter) => filter,
             Err(err) => {
-                println!("Error: Failed to load filter file '{}': {}", path, err);
+                println!(
+                    "Error: Failed to load filter file '{}': {}",
+                    path, err
+                );
                 process::exit(1);
-            },
+            }
         },
         None => Filter::new(),
     };
@@ -256,8 +275,10 @@ fn main() {
     }
 
     if filter.is_empty() {
-        println!("Error: Please specify paths to include with either \
-                 `--filter-file` or `--path`.");
+        println!(
+            "Error: Please specify paths to include with either \
+             `--filter-file` or `--path`."
+        );
         process::exit(1);
     }
 
@@ -272,32 +293,40 @@ fn main() {
 
     let mut map = if args.nomap {
         OidMap::new()
-    }
-    else {
+    } else {
         match OidMap::from_repo(&repo, &map_name) {
             Ok(map) => map,
             Err(err) => {
                 println!("Error: Failed to load object map: {}", err);
                 process::exit(1);
-            },
+            }
         }
     };
 
-    match repo_subset(&repo, &mut map, &filter, &args.revspec, &args.branch,
-                  args.force, args.quiet) {
+    match repo_subset(
+        &repo,
+        &mut map,
+        &filter,
+        &args.revspec,
+        &args.branch,
+        args.force,
+        args.quiet,
+    ) {
         Ok(true) => {
             println!("Branch '{}' created.", args.branch);
-        },
+        }
         Ok(false) => {
             // FIXME: Create an orphaned branch instead?
-            println!("Error: Filtering only produced empty commits. No branch \
-                     created.");
+            println!(
+                "Error: Filtering only produced empty commits. No branch \
+                 created."
+            );
             process::exit(1);
-        },
+        }
         Err(err) => {
             println!("Error: Failed to create repository subset: {}", err);
             process::exit(1);
-        },
+        }
     };
 
     // Save the mapping for super fast filtering next time.
