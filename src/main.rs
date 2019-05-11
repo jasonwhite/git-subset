@@ -169,7 +169,7 @@ fn process_commit(
     filter: &Filter,
 ) -> Result<git2::Oid, git2::Error> {
     // Don't bother if it has already been done.
-    if let Some(&Some(newid)) = map.get(&id) {
+    if let Some(&Some(newid)) = map.resolve(&id) {
         return Ok(newid);
     }
 

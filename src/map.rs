@@ -108,8 +108,10 @@ impl OidMap {
         for (k, v) in &self.map {
             write!(f, "{}", k)?;
 
-            if let Some(v) = *v {
+            if let Some(v) = v {
                 write!(f, " {}\n", v)?;
+            } else {
+                write!(f, "\n")?;
             }
         }
 
@@ -123,9 +125,10 @@ impl OidMap {
     /// Resolves an OID through multiple indirections.
     pub fn resolve(&self, k: &Oid) -> Option<&Option<Oid>> {
         match self.map.get(k) {
-            Some(value) => match *value {
+            Some(value) => match value {
                 Some(oid) => {
-                    if k == &oid {
+                    if k == oid {
+                        // Break cycles.
                         Some(value)
                     } else if self.map.contains_key(&oid) {
                         self.resolve(&oid)
