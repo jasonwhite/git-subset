@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 use git2;
-use map::OidMap;
+use crate::map::OidMap;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -70,7 +70,7 @@ impl Filter {
 
         match components.next() {
             Some(Component::Normal(c)) => {
-                let mut filter = self
+                let filter = self
                     .filter
                     .entry(String::from(c.to_str().unwrap()))
                     .or_insert_with(|| Filter::new());
@@ -98,7 +98,7 @@ impl Filter {
     /// FIXME: When glob pattern matching is implemented, there may be multiple
     /// filters that can match. It would be better to return an iterator of the
     /// matching filters.
-    pub fn match_entry(&self, entry: &git2::TreeEntry) -> Option<&Filter> {
+    pub fn match_entry(&self, entry: &git2::TreeEntry<'_>) -> Option<&Filter> {
         for (pattern, filter) in &self.filter {
             if Self::match_name(pattern.as_str(), entry.name().unwrap()) {
                 return Some(filter);
@@ -115,7 +115,7 @@ pub fn filter_tree(
     repo: &git2::Repository,
     map: &mut OidMap,
     filter: &Filter,
-    tree: &git2::Tree,
+    tree: &git2::Tree<'_>,
 ) -> Result<git2::Oid, git2::Error> {
     match filter_tree_impl(repo, map, filter, tree)? {
         Some(oid) => Ok(oid),
@@ -132,7 +132,7 @@ fn filter_tree_impl(
     repo: &git2::Repository,
     map: &mut OidMap,
     filter: &Filter,
-    tree: &git2::Tree,
+    tree: &git2::Tree<'_>,
 ) -> Result<Option<git2::Oid>, git2::Error> {
     if let Some(oid) = map.get(&tree.id()) {
         // The work has already been done. Skip it.

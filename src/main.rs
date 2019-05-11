@@ -19,7 +19,7 @@
 // SOFTWARE.
 #[macro_use]
 extern crate clap;
-extern crate git2;
+use git2;
 
 mod args;
 mod filter;
@@ -32,14 +32,14 @@ use std::io::{self, Write};
 use std::process;
 use std::str;
 
-use args::Args;
-use filter::{filter_tree, Filter};
-use map::OidMap;
+use crate::args::Args;
+use crate::filter::{filter_tree, Filter};
+use crate::map::OidMap;
 
 /// Returns `true` if the given commit is considered empty. A commit is empty if
 /// its tree is the same as all of its parent's trees, or if it has no parents
 /// and the tree itself is empty.
-fn is_empty_commit(commit: &git2::Commit, empty_tree: &git2::Oid) -> bool {
+fn is_empty_commit(commit: &git2::Commit<'_>, empty_tree: &git2::Oid) -> bool {
     let mut parents = 0;
     let mut same = 0;
 
@@ -62,7 +62,7 @@ fn is_empty_commit(commit: &git2::Commit, empty_tree: &git2::Oid) -> bool {
 /// new tip commit OID.
 fn process_commits(
     repo: &git2::Repository,
-    revspec: &git2::Revspec,
+    revspec: &git2::Revspec<'_>,
     map: &mut OidMap,
     filter: &Filter,
     quiet: bool,
