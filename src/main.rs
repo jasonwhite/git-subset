@@ -17,9 +17,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-#[macro_use]
-extern crate clap;
 use git2;
+use structopt::StructOpt;
 
 mod args;
 mod filter;
@@ -246,7 +245,7 @@ fn repo_subset(
 ///       root commit).
 ///  3. Create a branch on the new tip commit.
 fn main() {
-    let args = Args::parse();
+    let args = Args::from_args();
 
     let repo = match git2::Repository::open(args.repo) {
         Ok(repo) => repo,
@@ -262,7 +261,8 @@ fn main() {
             Err(err) => {
                 println!(
                     "Error: Failed to load filter file '{}': {}",
-                    path, err
+                    path.display(),
+                    err
                 );
                 process::exit(1);
             }

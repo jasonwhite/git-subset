@@ -18,8 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use git2;
 use crate::map::OidMap;
+use git2;
 
 use std::collections::BTreeMap;
 use std::fs;

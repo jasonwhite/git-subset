@@ -17,86 +17,41 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-
-use clap::{App, Arg, ArgMatches};
-
 use std::path::PathBuf;
 
-#[derive(Debug)]
+use structopt::StructOpt;
+
+#[derive(StructOpt)]
 pub struct Args {
+    /// Don't print as much progress.
+    #[structopt(long = "quiet", short = "q")]
     pub quiet: bool,
+
+    /// Overwrites the branch name if it exists.
+    #[structopt(long = "force", short = "f")]
     pub force: bool,
+
+    /// Does not use the saved map. Useful for benchmarking purposes.
+    #[structopt(long = "nomap")]
     pub nomap: bool,
-    pub repo: String,
+
+    /// Path to the repository. Defaults to the current directory.
+    #[structopt(long = "repo", short = "r", default_value = ".")]
+    pub repo: PathBuf,
+
+    /// Name of the branch to create on the rewritten commits.
+    #[structopt(long = "branch", short = "b")]
     pub branch: String,
-    pub filter_file: Option<String>,
+
+    /// Path to the file containing paths to keep.
+    #[structopt(long = "filter-file")]
+    pub filter_file: Option<PathBuf>,
+
+    /// Path to include. Can be specified multiple times.
+    #[structopt(long = "path", short = "p")]
     pub paths: Vec<PathBuf>,
+
+    /// The ref to filter from.
+    #[structopt(default_value = "HEAD")]
     pub revspec: String,
-}
-
-impl Args {
-    pub fn parse() -> Self {
-        let matches = App::new(crate_name!())
-            .version(crate_version!())
-            .author(crate_authors!())
-            .about(crate_description!())
-            .args(&[
-                Arg::with_name("quiet")
-                    .help("Don't print as much progress.")
-                    .long("quiet")
-                    .short("q"),
-                Arg::with_name("force")
-                    .help("Overwrites the branch name if it exists.")
-                    .long("force")
-                    .short("f"),
-                Arg::with_name("nomap")
-                    .help("Does not use the saved map. Useful for profiling purposes.")
-                    .long("nomap"),
-                Arg::with_name("repo")
-                    .help("Path to the repository. Defaults to the current directory.")
-                    .takes_value(true)
-                    .long("repo")
-                    .short("r")
-                    .default_value("."),
-                Arg::with_name("filter-file")
-                    .help("Path to the file containing paths to keep.")
-                    .takes_value(true)
-                    .long("filter-file"),
-                Arg::with_name("path")
-                    .help("Path to include. Can be specified multiple times.")
-                    .takes_value(true)
-                    .short("p")
-                    .multiple(true)
-                    .long("path"),
-                Arg::with_name("revspec")
-                    .help("The ref to filter from.")
-                    .index(1)
-                    .default_value("HEAD"),
-                Arg::with_name("branch")
-                    .help("Name of the branch to create on the rewritten commits.")
-                    .takes_value(true)
-                    .long("branch")
-                    .short("b")
-                    .required(true),
-            ])
-            .get_matches();
-
-        Args::parse_matches(&matches)
-    }
-
-    fn parse_matches<'a>(matches: &ArgMatches<'a>) -> Self {
-        Args {
-            quiet: matches.is_present("quiet"),
-            force: matches.is_present("force"),
-            nomap: matches.is_present("nomap"),
-            repo: matches.value_of("repo").unwrap().to_string(),
-            branch: matches.value_of("branch").unwrap().to_string(),
-            filter_file: matches.value_of("filter-file").map(|s| s.to_string()),
-            revspec: matches.value_of("revspec").unwrap().to_string(),
-            paths: match matches.values_of("path") {
-                None => vec![],
-                Some(values) => values.map(|s| PathBuf::from(s)).collect(),
-            },
-        }
-    }
 }
