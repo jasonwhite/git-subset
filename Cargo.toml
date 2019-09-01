@@ -16,4 +16,4 @@ edition = "2018"
 
 [dependencies]
 git2 = "0.9"
-structopt = "0.2"
+structopt = "0.3"
