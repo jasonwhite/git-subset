@@ -19,21 +19,46 @@
 // SOFTWARE.
 
 use crate::map::OidMap;
-use git2;
+use git2::{self, Oid, TreeBuilder, TreeEntry};
 
-use std::collections::BTreeMap;
+use std::collections::{btree_map, BTreeMap};
 use std::fs;
 use std::io;
-use std::path::{Component, Path};
+use std::path::{Component, Components, Path};
+
+struct PathIterator<'a> {
+    components: Components<'a>,
+}
+
+impl<'a> PathIterator<'a> {
+    fn new(path: &'a Path) -> Self {
+        Self {
+            components: path.components(),
+        }
+    }
+}
+
+impl<'a> Iterator for PathIterator<'a> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.components.next().and_then(|c| match c {
+            Component::Normal(c) => Some(String::from(c.to_str().unwrap())),
+            _ => None,
+        })
+    }
+}
 
 #[derive(Debug, Hash)]
 pub struct Filter {
+    exclude: bool,
     filter: BTreeMap<String, Filter>,
 }
 
 impl Filter {
-    pub fn new() -> Filter {
+    pub fn new(exclude: bool) -> Filter {
         Filter {
+            exclude,
             filter: BTreeMap::new(),
         }
     }
@@ -46,18 +71,26 @@ impl Filter {
     /// Load from a reader. The file shall consist of lines containing paths.
     /// Blank lines and lines starting with a "#" are ignored.
     pub fn from_reader<R: io::BufRead>(reader: R) -> io::Result<Filter> {
-        let mut filter = Self::new();
+        let mut filter: Filter = Default::default();
+        let mut exclude = false;
 
         for line in reader.lines() {
             let line = line?;
             let line = line.trim();
 
-            if line.is_empty() || line.starts_with("#") {
+            if line == "# !EXCLUDES!" {
+                exclude = true;
+            } else if line.is_empty() || line.starts_with("#") {
                 // Ignore blank lines and comments
                 continue;
             }
 
-            filter.insert(Path::new(line));
+            let path = Path::new(line);
+            if exclude {
+                filter.insert_exclude(path);
+            } else {
+                filter.insert_include(path);
+            }
         }
 
         Ok(filter)
@@ -65,20 +98,70 @@ impl Filter {
 
     /// Inserts a path into the filter. The path is split up and inserted into
     /// the tree.
-    pub fn insert(&mut self, path: &Path) {
-        let mut components = path.components();
+    pub fn insert_include(&mut self, path: &Path) {
+        let mut components = PathIterator::new(path);
 
-        match components.next() {
-            Some(Component::Normal(c)) => {
-                let filter = self
-                    .filter
-                    .entry(String::from(c.to_str().unwrap()))
-                    .or_insert_with(|| Filter::new());
-
-                // Insert the rest of the components recursively.
-                filter.insert(components.as_path());
+        let mut filter = self;
+        while let Some(component) = components.next() {
+            if filter.exclude {
+                // Component cannot be included when it has been previously excluded
+                break;
             }
-            _ => {}
+            filter = filter
+                .filter
+                .entry(component)
+                .or_insert_with(|| Filter::new(false));
+        }
+        filter.filter.clear();
+    }
+
+    fn insert_excluded_components(
+        &mut self,
+        mut component: String,
+        mut components: PathIterator<'_>,
+    ) {
+        let mut filter = self;
+        loop {
+            match filter.filter.entry(component) {
+                btree_map::Entry::Occupied(entry) => {
+                    filter = entry.into_mut();
+                    if filter.is_empty() {
+                        break;
+                    }
+                }
+                btree_map::Entry::Vacant(entry) => {
+                    filter = entry.insert(Filter::new(true))
+                }
+            }
+
+            if let Some(component_next) = components.next() {
+                component = component_next;
+            } else {
+                break;
+            }
+        }
+        filter.filter.clear();
+    }
+
+    pub fn insert_exclude(&mut self, path: &Path) {
+        let mut components = PathIterator::new(path);
+
+        let mut filter = self;
+        while let Some(component) = components.next() {
+            if filter.is_empty() {
+                filter.exclude = true;
+                filter.insert_excluded_components(component, components);
+                break;
+            } else if filter.exclude {
+                filter.insert_excluded_components(component, components);
+                break;
+            }
+            match filter.filter.entry(component) {
+                btree_map::Entry::Occupied(entry) => {
+                    filter = entry.into_mut();
+                }
+                btree_map::Entry::Vacant(_) => break,
+            }
         }
     }
 
@@ -109,6 +192,12 @@ impl Filter {
     }
 }
 
+impl Default for Filter {
+    fn default() -> Self {
+        Filter::new(false)
+    }
+}
+
 /// Rewrites a tree such that it only contains the entries specified by the tree
 /// filter. This function calls itself recursively to rewrite a tree.
 pub fn filter_tree(
@@ -128,6 +217,20 @@ pub fn filter_tree(
     }
 }
 
+fn insert_entry_to_builder(
+    builder: &mut TreeBuilder,
+    entry: TreeEntry,
+    newtree: Option<Oid>,
+) -> Result<(), git2::Error> {
+    builder
+        .insert(
+            entry.name_bytes(),
+            newtree.map_or_else(|| entry.id(), |oid| oid),
+            entry.filemode(),
+        )
+        .map(|_| ())
+}
+
 fn filter_tree_impl(
     repo: &git2::Repository,
     map: &mut OidMap,
@@ -145,11 +248,9 @@ fn filter_tree_impl(
         if let Some(filter) = filter.match_entry(&entry) {
             if filter.is_empty() {
                 // There are no sub-filters. Match this tree entirely.
-                builder.insert(
-                    entry.name_bytes(),
-                    entry.id(),
-                    entry.filemode(),
-                )?;
+                if !filter.exclude {
+                    insert_entry_to_builder(&mut builder, entry, None)?;
+                }
             } else if entry.kind() == Some(git2::ObjectType::Tree) {
                 // There are sub-filters and this is a tree object. Recurse into
                 // the tree with the sub-filter for further matching.
@@ -159,13 +260,16 @@ fn filter_tree_impl(
                 if let Some(newtree) =
                     filter_tree_impl(repo, map, filter, &tree)?
                 {
-                    builder.insert(
-                        entry.name_bytes(),
-                        newtree,
-                        entry.filemode(),
+                    insert_entry_to_builder(
+                        &mut builder,
+                        entry,
+                        Some(newtree),
                     )?;
                 }
             }
+        } else if filter.exclude {
+            // There is no match for exclude. Match this tree entirely.
+            insert_entry_to_builder(&mut builder, entry, None)?;
         }
     }
 
@@ -179,5 +283,125 @@ fn filter_tree_impl(
         map.insert(tree.id(), Some(oid));
 
         Ok(Some(oid))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FilterFlatterer {
+        stack: Vec<String>,
+        paths: Vec<String>,
+    }
+
+    impl FilterFlatterer {
+        fn flatten_impl(&mut self, filter: &Filter) {
+            for (pattern, filter) in &filter.filter {
+                let component = if filter.exclude {
+                    format!("{}*", pattern)
+                } else {
+                    pattern.clone()
+                };
+                self.stack.push(component);
+                if filter.is_empty() {
+                    self.paths.push(self.stack.join("/"));
+                } else {
+                    self.flatten_impl(filter);
+                }
+                self.stack.pop();
+            }
+        }
+
+        fn flatten(mut self, filter: &Filter) -> Vec<String> {
+            if filter.exclude {
+                self.stack.push("*".into());
+            }
+            self.flatten_impl(filter);
+            self.paths
+        }
+    }
+
+    impl Default for FilterFlatterer {
+        fn default() -> Self {
+            Self {
+                stack: Default::default(),
+                paths: Default::default(),
+            }
+        }
+    }
+
+    fn check_filter(filter: &Filter, mut ref_paths: Vec<&str>) {
+        let mut filter_paths = FilterFlatterer::default().flatten(&filter);
+
+        filter_paths.sort();
+        ref_paths.sort();
+
+        assert_eq!(filter_paths, ref_paths);
+    }
+
+    #[test]
+    fn insert_includes_empty() {
+        let filter: Filter = Default::default();
+        check_filter(&filter, vec![]);
+    }
+
+    #[test]
+    fn insert_includes() {
+        let mut filter: Filter = Default::default();
+
+        filter.insert_include(Path::new("a/b/c"));
+        filter.insert_include(Path::new("a/b"));
+        filter.insert_include(Path::new("b"));
+        filter.insert_include(Path::new("a/b/d"));
+        filter.insert_include(Path::new("a/b/e"));
+        filter.insert_include(Path::new("a/c/d/e"));
+        filter.insert_include(Path::new("a/c/d/f"));
+        filter.insert_include(Path::new("a/c/d"));
+
+        check_filter(&filter, vec!["a/b/d", "a/b/e", "a/c/d", "b"]);
+    }
+
+    #[test]
+    fn insert_excludes() {
+        let mut filter: Filter = Default::default();
+
+        filter.insert_exclude(Path::new("a/b/c"));
+        filter.insert_exclude(Path::new("a/b"));
+        filter.insert_exclude(Path::new("b"));
+        filter.insert_exclude(Path::new("c/d"));
+
+        check_filter(&filter, vec!["*/a*/b*", "*/b*", "*/c*/d*"]);
+    }
+
+    #[test]
+    fn insert_mixed() {
+        let mut filter: Filter = Default::default();
+
+        filter.insert_include(Path::new("a/b"));
+        filter.insert_exclude(Path::new("a/b/c"));
+        filter.insert_exclude(Path::new("a/b/d"));
+        filter.insert_exclude(Path::new("a/c/d"));
+        filter.insert_include(Path::new("b"));
+        filter.insert_include(Path::new("c/d/e/f"));
+        filter.insert_exclude(Path::new("c/d/e"));
+        filter.insert_include(Path::new("d/e/f"));
+        filter.insert_exclude(Path::new("d/e/f/g/h"));
+        filter.insert_exclude(Path::new("e"));
+        filter.insert_include(Path::new("f"));
+        filter.insert_exclude(Path::new("f/g/h"));
+        filter.insert_exclude(Path::new("f/g"));
+
+        check_filter(
+            &filter,
+            vec![
+                "a/b*/c*",
+                "a/b*/d*",
+                "b",
+                "c/d/e/f",
+                "d/e/f*/g*/h*",
+                "f*/g*",
+            ],
+        );
     }
 }

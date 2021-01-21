@@ -67,7 +67,7 @@ fn process_commits(
     quiet: bool,
 ) -> Result<Option<git2::Oid>, git2::Error> {
     let mut commits = repo.revwalk()?;
-    commits.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::REVERSE);
+    commits.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::REVERSE)?;
 
     match (revspec.from(), revspec.to()) {
         (Some(from), Some(to)) => {
@@ -267,11 +267,11 @@ fn main() {
                 process::exit(1);
             }
         },
-        None => Filter::new(),
+        None => Default::default(),
     };
 
     for path in &args.paths {
-        filter.insert(path);
+        filter.insert_include(path);
     }
 
     if filter.is_empty() {
