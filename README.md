@@ -59,7 +59,7 @@ Now, clone the Linux kernel (or another repository that isn't so *YUGE*):
 Now, to filter out everything that isn't listed in `linux.filter`. (Brace
 yourself for awesome speed!)
 
-    $ git-subtree --filter-file ../linux.filter --branch new-master
+    $ git-subset --filter-file ../linux.filter --branch new-master
     Getting list of commits...
     Rewriting 4327da054142f4dbf74615918b71441d95025bad (678123/678123) - 100%
     Branch 'new-master' created.
@@ -72,7 +72,7 @@ filter-branch` to finish running.
 Running it again after pulling down the latest changes...
 
     $ git pull
-    $ git-subtree --filter-file ../linux.filter --branch new-master --force
+    $ git-subset --filter-file ../linux.filter --branch new-master --force
 
 ...took about **20 seconds** because the mapping of old commit hashes to new
 commit hashes has been cached from the previous run (use `--nomap` to disable
